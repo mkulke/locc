@@ -1,0 +1,10 @@
+[package]
+name = "mloc"
+version = "0.1.0"
+authors = ["Magnus Kulke <magnus.kulke@moovel.com>"]
+
+[dependencies]
+serde = "1.0"
+serde_derive = "1.0"
+serde_json = "1.0"
+reqwest = "0.6.2"
