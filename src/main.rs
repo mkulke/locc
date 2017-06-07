@@ -139,12 +139,8 @@ fn bail_out(message: &str) {
     process::exit(1);
 }
 
-fn handle_rev(matches: ArgMatches) {
-    let mut parts: Vec<&str> = matches
-        .subcommand_matches("rev")
-        .and_then(|m| m.values_of("location"))
-        .unwrap()
-        .collect();
+fn handle_rev(matches: &ArgMatches) {
+    let mut parts: Vec<&str> = matches.values_of("location").unwrap().collect();
     let lat = parts.pop().unwrap();
     let lon = parts.pop().unwrap();
     match reverse_geocode(lon, lat) {
@@ -153,11 +149,8 @@ fn handle_rev(matches: ArgMatches) {
     }
 }
 
-fn handle_loc(matches: ArgMatches) {
-    let place = matches
-        .subcommand_matches("loc")
-        .and_then(|m| m.value_of("place"))
-        .unwrap();
+fn handle_loc(matches: &ArgMatches) {
+    let place = matches.value_of("place").unwrap();
     match search(place) {
         Ok(data) => println!("{}", data),
         Err(e) => bail_out(e.description()),
@@ -168,9 +161,9 @@ fn main() {
     let app = get_cli_app();
     let matches = app.get_matches();
 
-    match matches.subcommand_name() {
-        Some("loc") => handle_loc(matches),
-        Some("rev") => handle_rev(matches),
+    match matches.subcommand() {
+        ("loc", Some(sub_m)) => handle_loc(sub_m),
+        ("rev", Some(sub_m)) => handle_rev(sub_m),
         _ => bail_out(matches.usage()),
     }
 }
