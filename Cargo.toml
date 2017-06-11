@@ -1,6 +1,6 @@
 [package]
 name = "locc"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Magnus Kulke <mkulke@gmail.com>"]
 
 [dependencies]
@@ -9,3 +9,4 @@ serde_derive = "1.0"
 serde_json = "1.0"
 reqwest = "0.6.2"
 clap = "2.24.1"
+geo = "0.4.5"
