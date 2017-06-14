@@ -6,6 +6,8 @@ extern crate reqwest;
 #[macro_use]
 extern crate clap;
 extern crate geo;
+extern crate num_traits;
+extern crate rand;
 
 use std::error::Error;
 use std::process;
@@ -15,12 +17,15 @@ use std::fmt;
 use std::fmt::Display;
 use reqwest::header::UserAgent;
 use std::io::Write;
-use geo::Point;
+use geo::{Point, LineString, Polygon};
 use geo::haversine_distance::HaversineDistance;
+use rand::distributions::{IndependentSample, Range};
+use std::fs::File;
 
 static NOMINATIM_ENDPOINT: &'static str = "http://nominatim.openstreetmap.org";
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 const NAME: &'static str = env!("CARGO_PKG_NAME");
+const EARTH_RADIUS_KM: f64 = 6373.;
 
 #[derive(Deserialize, Debug)]
 struct Location {
@@ -88,6 +93,17 @@ fn is_float(x: String) -> Result<(), String> {
     }
 }
 
+fn is_positive_float(x: String) -> Result<(), String> {
+    match x.parse::<f64>() {
+            Ok(f) => Ok(f),
+            Err(_) => Err("Value is not a proper float.".to_string()),
+        }
+        .and_then(|f| match f < 0. {
+                      false => Ok(()),
+                      true => Err("Value is not positive.".to_string()),
+                  })
+}
+
 fn get_loc_arg<'a, 'b>(name: &'a str, short: &str) -> Arg<'a, 'b> {
     Arg::with_name(name)
         .required(true)
@@ -116,6 +132,17 @@ fn get_cli_app<'a, 'b>() -> App<'a, 'b> {
         .subcommand(SubCommand::with_name("rev")
                         .about("Reverse geocode a place via location")
                         .arg(get_loc_arg("location", "L")))
+        .subcommand(SubCommand::with_name("rnd")
+                        .about("Get a random location within a km radius")
+                        .arg(get_loc_arg("location", "L"))
+                        .arg(Arg::with_name("radius")
+                                 .required(true)
+                                 .short("R")
+                                 .long("radius")
+                                 .value_name("radius in km")
+                                 .validator(is_positive_float)
+                                 .number_of_values(1)
+                                 .takes_value(true)))
         .subcommand(SubCommand::with_name("dis")
                         .about("Return the distance between two points in meters")
                         .arg(get_loc_arg("location1", "1"))
@@ -137,6 +164,54 @@ fn handle_rev(matches: &ArgMatches) {
     }
 }
 
+fn get_random_point(center: &Point<f64>, radius: f64) -> Point<f64> {
+    let mut rng = rand::thread_rng();
+    let dist_range = Range::new(0., radius);
+    let distance = dist_range.ind_sample(&mut rng);
+    let bearing_range = Range::new(0., 360.);
+    let bearing = bearing_range.ind_sample(&mut rng);
+
+    direction(center, bearing, distance)
+}
+
+#[cfg(test)]
+mod get_random_point {
+    use super::*;
+    use geo::contains::Contains;
+
+    #[derive(Deserialize, Debug)]
+    struct TestCoordinates(f64, f64);
+
+    #[test]
+    fn stays_within_the_given_radius() {
+        let file = File::open("test/circle.json").unwrap();
+        let coordinates: Vec<TestCoordinates> = serde_json::from_reader(file).unwrap();
+        let points: Vec<Point<f64>> = coordinates
+            .into_iter()
+            .map(|t| Point::new(t.0, t.1))
+            .collect();
+        let exterior = LineString(points);
+        let polygon = Polygon::new(exterior, vec![]);
+
+        let center_point = Point::new(9.177789688110352, 48.776781529534965);
+        for _ in 0..1000 {
+            let random_point = get_random_point(&center_point, 9.9);
+            let contained = polygon.contains(&random_point);
+            assert_eq!(contained, true);
+        }
+    }
+}
+
+fn handle_rnd(matches: &ArgMatches) {
+    let center_loc = matches.values_of("location").unwrap();
+    let center_point = parse_point(center_loc).unwrap();
+    let rad_str = matches.value_of("radius").unwrap();
+    let rad = rad_str.parse::<f64>().unwrap();
+    let random_point = get_random_point(&center_point, rad);
+
+    println!("{},{}", random_point.x(), random_point.y());
+}
+
 fn handle_loc(matches: &ArgMatches) {
     let place = matches.value_of("place").unwrap();
     match search(place) {
@@ -151,6 +226,40 @@ fn parse_point(mut loc: Values) -> Result<Point<f64>, Box<Error>> {
     let lon_f = lon.parse::<f64>()?;
     let lat_f = lat.parse::<f64>()?;
     Ok(Point::new(lon_f, lat_f))
+}
+
+fn direction(point: &Point<f64>, bearing: f64, distance: f64) -> Point<f64> {
+    let pi = std::f64::consts::PI;
+    let deg_to_rad = pi / 180.;
+    let rad_to_deg = 180. / pi;
+    let center_lng = deg_to_rad * point.x();
+    let center_lat = deg_to_rad * point.y();
+    let bearing_rad = deg_to_rad * bearing;
+
+    let rad = distance / EARTH_RADIUS_KM;
+
+    let lat = {
+            center_lat.sin() * rad.cos() + center_lat.cos() * rad.sin() * bearing_rad.cos()
+        }
+        .asin();
+    let lng = {
+            bearing_rad.sin() * rad.sin() * center_lat.cos()
+        }
+        .atan2(rad.cos() - center_lat.sin() * lat.sin()) + center_lng;
+
+    Point::new(lng * rad_to_deg, lat * rad_to_deg)
+}
+
+#[cfg(test)]
+mod direction {
+    use super::*;
+
+    #[test]
+    fn returns_a_new_point() {
+        let point_1 = Point::new(9.177789688110352, 48.776781529534965);
+        let point_2 = direction(&point_1, 45., 10.);
+        assert_eq!(point_2, Point::new(9.274379723017008, 48.840312896632746));
+    }
 }
 
 fn handle_dis(matches: &ArgMatches) {
@@ -168,6 +277,7 @@ fn main() {
 
     match matches.subcommand() {
         ("loc", Some(sub_m)) => handle_loc(sub_m),
+        ("rnd", Some(sub_m)) => handle_rnd(sub_m),
         ("rev", Some(sub_m)) => handle_rev(sub_m),
         ("dis", Some(sub_m)) => handle_dis(sub_m),
         _ => bail_out(matches.usage()),
