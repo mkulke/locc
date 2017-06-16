@@ -17,10 +17,9 @@ use std::fmt;
 use std::fmt::Display;
 use reqwest::header::UserAgent;
 use std::io::Write;
-use geo::{Point, LineString, Polygon};
+use geo::Point;
 use geo::haversine_distance::HaversineDistance;
 use rand::distributions::{IndependentSample, Range};
-use std::fs::File;
 
 static NOMINATIM_ENDPOINT: &'static str = "http://nominatim.openstreetmap.org";
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
@@ -178,6 +177,8 @@ fn get_random_point(center: &Point<f64>, radius: f64) -> Point<f64> {
 mod get_random_point {
     use super::*;
     use geo::contains::Contains;
+    use geo::{LineString, Polygon};
+    use std::fs::File;
 
     #[derive(Deserialize, Debug)]
     struct TestCoordinates(f64, f64);
