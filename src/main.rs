@@ -21,9 +21,9 @@ use geo::Point;
 use geo::haversine_distance::HaversineDistance;
 use rand::distributions::{IndependentSample, Range};
 
-static NOMINATIM_ENDPOINT: &'static str = "http://nominatim.openstreetmap.org";
-const VERSION: &'static str = env!("CARGO_PKG_VERSION");
-const NAME: &'static str = env!("CARGO_PKG_NAME");
+static NOMINATIM_ENDPOINT: &str = "http://nominatim.openstreetmap.org";
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+const NAME: &str = env!("CARGO_PKG_NAME");
 const EARTH_RADIUS_KM: f64 = 6373.;
 
 #[derive(Deserialize, Debug)]
