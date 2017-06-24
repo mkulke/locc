@@ -24,6 +24,12 @@ struct Location {
     lon: String,
 }
 
+impl Location {
+    fn to_point(&self) -> Result<Point<f64>, Box<Error>> {
+        to_point((self.lon.as_str(), self.lat.as_str()))
+    }
+}
+
 impl Display for Location {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{},{}", self.lon, self.lat)
@@ -150,40 +156,68 @@ mod direction {
     }
 }
 
-fn parse_point(mut loc: Values) -> Result<Point<f64>, Box<Error>> {
-    let lon = loc.next().ok_or("Argument parse error")?;
-    let lat = loc.next().ok_or("Argument parse error")?;
+fn get_arg_value<'a>(matches: &'a ArgMatches, key: &str) -> Result<&'a str, Box<Error>> {
+    matches
+        .value_of(key)
+        .ok_or(From::from(format!("Could not parse {} argument", key)))
+}
+
+fn get_arg_values<'a>(matches: &'a ArgMatches, key: &str) -> Result<Values<'a>, Box<Error>> {
+    let values = matches
+        .values_of(key)
+        .ok_or(format!("Could not parse {} argument", key))?;
+    Ok(values)
+}
+
+fn parse_loc_string(mut loc: Values) -> Result<(&str, &str), Box<Error>> {
+    let lon = loc.next().ok_or("Could not parse longitude")?;
+    let lat = loc.next().ok_or("Could not parse latitute")?;
+    Ok((lon, lat))
+}
+
+fn to_point(loc: (&str, &str)) -> Result<Point<f64>, Box<Error>> {
+    let (lon, lat) = loc;
     let lon_f = lon.parse::<f64>()?;
     let lat_f = lat.parse::<f64>()?;
     Ok(Point::new(lon_f, lat_f))
 }
 
+fn parse_point(matches: &ArgMatches, key: &str) -> Result<Point<f64>, Box<Error>> {
+    get_arg_values(matches, key)
+        .and_then(parse_loc_string)
+        .and_then(to_point)
+}
+
+fn parse_float(matches: &ArgMatches, key: &str) -> Result<f64, Box<Error>> {
+    let rad_str = get_arg_value(matches, key)?;
+    let rad = rad_str.parse::<f64>()?;
+    Ok(rad)
+}
+
 pub fn handle_rev(matches: &ArgMatches) -> Result<String, Box<Error>> {
-    let mut parts: Vec<&str> = matches.values_of("location").unwrap().collect();
-    let lat = parts.pop().unwrap();
-    let lon = parts.pop().unwrap();
+    let (lon, lat) = get_arg_values(matches, "location")
+        .and_then(parse_loc_string)?;
     reverse_geocode(lon, lat).map(|place| format!("{}", place))
 }
 
 pub fn handle_dis(matches: &ArgMatches) -> Result<String, Box<Error>> {
-    let loc_1 = matches.values_of("location1").unwrap();
-    let point_1 = parse_point(loc_1).unwrap();
-    let loc_2 = matches.values_of("location2").unwrap();
-    let point_2 = parse_point(loc_2).unwrap();
+    let point_1 = parse_point(matches, "location1")?;
+    let point_2 = parse_point(matches, "location2")?;
     let dist = point_1.haversine_distance(&point_2);
     Ok(format!("{:.0}", dist))
 }
 
 pub fn handle_rnd(matches: &ArgMatches) -> Result<String, Box<Error>> {
-    let center_loc = matches.values_of("location").unwrap();
-    let center_point = parse_point(center_loc).unwrap();
-    let rad_str = matches.value_of("radius").unwrap();
-    let rad = rad_str.parse::<f64>().unwrap();
+    let center_point = match matches.value_of("place") {
+        Some(place) => search(place).and_then(|loc| loc.to_point()),
+        None => parse_point(matches, "location"),
+    }?;
+    let rad = parse_float(matches, "radius")?;
     let random_point = get_random_point(&center_point, rad);
     Ok(format!("{},{}", random_point.x(), random_point.y()))
 }
 
 pub fn handle_loc(matches: &ArgMatches) -> Result<String, Box<Error>> {
-    let place = matches.value_of("place").unwrap();
+    let place = get_arg_value(matches, "place")?;
     search(place).map(|result| format!("{}", result))
 }
