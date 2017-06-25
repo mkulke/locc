@@ -11,7 +11,7 @@ use reqwest::header::UserAgent;
 use geo::Point;
 use geo::haversine_distance::HaversineDistance;
 use rand::distributions::{IndependentSample, Range};
-use std::f64::consts::PI;
+use num_traits::Float;
 
 static NOMINATIM_ENDPOINT: &str = "http://nominatim.openstreetmap.org";
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -85,8 +85,9 @@ fn search(place_name: &str) -> Result<Location, Box<Error>> {
 
 fn get_random_point(center: &Point<f64>, radius: f64) -> Point<f64> {
     let mut rng = rand::thread_rng();
-    let dist_range = Range::new(0., radius);
-    let distance = dist_range.ind_sample(&mut rng);
+    let dist_range = Range::new(0., 1.0);
+    let rnd_factor = dist_range.ind_sample(&mut rng).sqrt();
+    let distance = rnd_factor * radius;
     let bearing_range = Range::new(0., 360.);
     let bearing = bearing_range.ind_sample(&mut rng);
 
@@ -124,11 +125,9 @@ mod get_random_point {
 }
 
 fn direction(point: &Point<f64>, bearing: f64, distance: f64) -> Point<f64> {
-    let deg_to_rad = PI / 180.;
-    let rad_to_deg = 180. / PI;
-    let center_lng = deg_to_rad * point.x();
-    let center_lat = deg_to_rad * point.y();
-    let bearing_rad = deg_to_rad * bearing;
+    let center_lng = point.x().to_radians();
+    let center_lat = point.y().to_radians();
+    let bearing_rad = bearing.to_radians();
 
     let rad = distance / EARTH_RADIUS_KM;
 
@@ -141,7 +140,7 @@ fn direction(point: &Point<f64>, bearing: f64, distance: f64) -> Point<f64> {
         }
         .atan2(rad.cos() - center_lat.sin() * lat.sin()) + center_lng;
 
-    Point::new(lng * rad_to_deg, lat * rad_to_deg)
+    Point::new(lng.to_degrees(), lat.to_degrees())
 }
 
 #[cfg(test)]
