@@ -1,6 +1,6 @@
 [package]
 name = "locc"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Magnus Kulke <mkulke@gmail.com>"]
 
 [dependencies]
@@ -12,4 +12,3 @@ clap = "2.24.1"
 geo = "0.4.5"
 num-traits = "0.1.37"
 rand = "0.3"
-quick-error = "1.2.0"

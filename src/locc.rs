@@ -11,7 +11,7 @@ use reqwest::header::UserAgent;
 use geo::Point;
 use geo::haversine_distance::HaversineDistance;
 use rand::distributions::{IndependentSample, Range};
-use std::f64::consts::PI;
+use num_traits::Float;
 
 static NOMINATIM_ENDPOINT: &str = "http://nominatim.openstreetmap.org";
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -22,6 +22,12 @@ const EARTH_RADIUS_KM: f64 = 6373.;
 struct Location {
     lat: String,
     lon: String,
+}
+
+impl Location {
+    fn to_point(&self) -> Result<Point<f64>, Box<Error>> {
+        to_point((self.lon.as_str(), self.lat.as_str()))
+    }
 }
 
 impl Display for Location {
@@ -79,8 +85,9 @@ fn search(place_name: &str) -> Result<Location, Box<Error>> {
 
 fn get_random_point(center: &Point<f64>, radius: f64) -> Point<f64> {
     let mut rng = rand::thread_rng();
-    let dist_range = Range::new(0., radius);
-    let distance = dist_range.ind_sample(&mut rng);
+    let dist_range = Range::new(0., 1.0);
+    let rnd_factor = dist_range.ind_sample(&mut rng).sqrt();
+    let distance = rnd_factor * radius;
     let bearing_range = Range::new(0., 360.);
     let bearing = bearing_range.ind_sample(&mut rng);
 
@@ -118,11 +125,9 @@ mod get_random_point {
 }
 
 fn direction(point: &Point<f64>, bearing: f64, distance: f64) -> Point<f64> {
-    let deg_to_rad = PI / 180.;
-    let rad_to_deg = 180. / PI;
-    let center_lng = deg_to_rad * point.x();
-    let center_lat = deg_to_rad * point.y();
-    let bearing_rad = deg_to_rad * bearing;
+    let center_lng = point.x().to_radians();
+    let center_lat = point.y().to_radians();
+    let bearing_rad = bearing.to_radians();
 
     let rad = distance / EARTH_RADIUS_KM;
 
@@ -135,7 +140,7 @@ fn direction(point: &Point<f64>, bearing: f64, distance: f64) -> Point<f64> {
         }
         .atan2(rad.cos() - center_lat.sin() * lat.sin()) + center_lng;
 
-    Point::new(lng * rad_to_deg, lat * rad_to_deg)
+    Point::new(lng.to_degrees(), lat.to_degrees())
 }
 
 #[cfg(test)]
@@ -150,40 +155,68 @@ mod direction {
     }
 }
 
-fn parse_point(mut loc: Values) -> Result<Point<f64>, Box<Error>> {
-    let lon = loc.next().ok_or("Argument parse error")?;
-    let lat = loc.next().ok_or("Argument parse error")?;
+fn get_arg_value<'a>(matches: &'a ArgMatches, key: &str) -> Result<&'a str, Box<Error>> {
+    matches
+        .value_of(key)
+        .ok_or(From::from(format!("Could not parse {} argument", key)))
+}
+
+fn get_arg_values<'a>(matches: &'a ArgMatches, key: &str) -> Result<Values<'a>, Box<Error>> {
+    let values = matches
+        .values_of(key)
+        .ok_or(format!("Could not parse {} argument", key))?;
+    Ok(values)
+}
+
+fn parse_loc_string(mut loc: Values) -> Result<(&str, &str), Box<Error>> {
+    let lon = loc.next().ok_or("Could not parse longitude")?;
+    let lat = loc.next().ok_or("Could not parse latitute")?;
+    Ok((lon, lat))
+}
+
+fn to_point(loc: (&str, &str)) -> Result<Point<f64>, Box<Error>> {
+    let (lon, lat) = loc;
     let lon_f = lon.parse::<f64>()?;
     let lat_f = lat.parse::<f64>()?;
     Ok(Point::new(lon_f, lat_f))
 }
 
+fn parse_point(matches: &ArgMatches, key: &str) -> Result<Point<f64>, Box<Error>> {
+    get_arg_values(matches, key)
+        .and_then(parse_loc_string)
+        .and_then(to_point)
+}
+
+fn parse_float(matches: &ArgMatches, key: &str) -> Result<f64, Box<Error>> {
+    let rad_str = get_arg_value(matches, key)?;
+    let rad = rad_str.parse::<f64>()?;
+    Ok(rad)
+}
+
 pub fn handle_rev(matches: &ArgMatches) -> Result<String, Box<Error>> {
-    let mut parts: Vec<&str> = matches.values_of("location").unwrap().collect();
-    let lat = parts.pop().unwrap();
-    let lon = parts.pop().unwrap();
+    let (lon, lat) = get_arg_values(matches, "location")
+        .and_then(parse_loc_string)?;
     reverse_geocode(lon, lat).map(|place| format!("{}", place))
 }
 
 pub fn handle_dis(matches: &ArgMatches) -> Result<String, Box<Error>> {
-    let loc_1 = matches.values_of("location1").unwrap();
-    let point_1 = parse_point(loc_1).unwrap();
-    let loc_2 = matches.values_of("location2").unwrap();
-    let point_2 = parse_point(loc_2).unwrap();
+    let point_1 = parse_point(matches, "location1")?;
+    let point_2 = parse_point(matches, "location2")?;
     let dist = point_1.haversine_distance(&point_2);
     Ok(format!("{:.0}", dist))
 }
 
 pub fn handle_rnd(matches: &ArgMatches) -> Result<String, Box<Error>> {
-    let center_loc = matches.values_of("location").unwrap();
-    let center_point = parse_point(center_loc).unwrap();
-    let rad_str = matches.value_of("radius").unwrap();
-    let rad = rad_str.parse::<f64>().unwrap();
+    let center_point = match matches.value_of("place") {
+        Some(place) => search(place).and_then(|loc| loc.to_point()),
+        None => parse_point(matches, "location"),
+    }?;
+    let rad = parse_float(matches, "radius")?;
     let random_point = get_random_point(&center_point, rad);
     Ok(format!("{},{}", random_point.x(), random_point.y()))
 }
 
 pub fn handle_loc(matches: &ArgMatches) -> Result<String, Box<Error>> {
-    let place = matches.value_of("place").unwrap();
+    let place = get_arg_value(matches, "place")?;
     search(place).map(|result| format!("{}", result))
 }
