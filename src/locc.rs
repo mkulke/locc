@@ -83,6 +83,13 @@ fn search(place_name: &str) -> Result<Location, Box<Error>> {
     Ok(first)
 }
 
+fn get_bbox(center: &Point<f64>, edge_length: f64) -> (Point<f64>, Point<f64>) {
+    let distance = (edge_length.powi(2) * 2.).sqrt() / 2.;
+    let sw = center.haversine_destination(225., distance);
+    let ne = center.haversine_destination(45., distance);
+    (sw, ne)
+}
+
 fn get_random_point(center: &Point<f64>, radius: f64) -> Point<f64> {
     let mut rng = rand::thread_rng();
     let dist_range = Range::new(0., 1.0);
@@ -188,4 +195,13 @@ pub fn handle_rnd(matches: &ArgMatches) -> Result<String, Box<Error>> {
 pub fn handle_loc(matches: &ArgMatches) -> Result<String, Box<Error>> {
     let place = get_arg_value(matches, "place")?;
     search(place).map(|result| format!("{}", result))
+}
+
+pub fn handle_bbox(matches: &ArgMatches) -> Result<String, Box<Error>> {
+    let place = get_arg_value(matches, "place")?;
+    let edge_length_km = parse_float(matches, "edge length")?;
+    search(place)
+        .and_then(|loc| loc.to_point())
+        .map(|point| get_bbox(&point, edge_length_km * 1000.))
+        .map(|(sw, ne)| format!("sw={},{}&ne={},{}", sw.x(), sw.y(), ne.x(), ne.y()))
 }

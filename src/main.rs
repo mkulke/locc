@@ -14,7 +14,7 @@ mod locc;
 use std::process;
 use clap::{Arg, App, SubCommand};
 use std::io::Write;
-use locc::{handle_dis, handle_rev, handle_rnd, handle_loc};
+use locc::{handle_dis, handle_rev, handle_rnd, handle_loc, handle_bbox};
 
 fn is_float(x: String) -> Result<(), String> {
     match x.parse::<f64>() {
@@ -60,6 +60,18 @@ fn get_cli_app<'a, 'b>() -> App<'a, 'b> {
     App::new("Location utility")
         .version(crate_version!())
         .author(crate_authors!())
+        .subcommand(SubCommand::with_name("bbox")
+                        .about("Retrieve a bbox via search string")
+                        .arg(get_place_arg("place", "P"))
+                        .arg(Arg::with_name("edge length")
+                                 .required(false)
+                                 .short("L")
+                                 .long("length")
+                                 .value_name("edge length in km")
+                                 .default_value("1")
+                                 .validator(is_positive_float)
+                                 .number_of_values(1)
+                                 .takes_value(true)))
         .subcommand(SubCommand::with_name("loc")
                         .about("Retrieve a location via search string")
                         .arg(get_place_arg("place", "P")))
@@ -99,6 +111,7 @@ fn main() {
 
     let subcommand_result = match matches.subcommand() {
         ("loc", Some(sub_m)) => handle_loc(sub_m),
+        ("bbox", Some(sub_m)) => handle_bbox(sub_m),
         ("rnd", Some(sub_m)) => handle_rnd(sub_m),
         ("rev", Some(sub_m)) => handle_rev(sub_m),
         ("dis", Some(sub_m)) => handle_dis(sub_m),
