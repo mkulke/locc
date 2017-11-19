@@ -1,6 +1,7 @@
 extern crate reqwest;
 extern crate rand;
 extern crate serde_json;
+extern crate polyline;
 
 use std::error::Error;
 use std::boxed::Box;
@@ -188,4 +189,30 @@ pub fn handle_rnd(matches: &ArgMatches) -> Result<String, Box<Error>> {
 pub fn handle_loc(matches: &ArgMatches) -> Result<String, Box<Error>> {
     let place = get_arg_value(matches, "place")?;
     search(place).map(|result| format!("{}", result))
+}
+
+pub fn handle_p2g(matches: &ArgMatches) -> Result<String, Box<Error>> {
+    let polyline = get_arg_value(matches, "polyline")?;
+    let tuples = polyline::decode_polyline(polyline.to_string(), 5)?;
+    let flipped_tuples: Vec<[f64; 2]> = tuples.iter().map(|tuple| [tuple[1], tuple[0]]).collect();
+    let feature = json!({
+        "type": "Feature",
+        "properties": {},
+        "geometry": {
+            "type": "LineString",
+            "coordinates": flipped_tuples,
+        }
+    });
+
+    let geojson = match matches.is_present("collection") {
+        true => {
+            json!({
+                "type": "FeatureCollection",
+                "features": [feature],
+            })
+        }
+        false => feature,
+    };
+
+    Ok(geojson.to_string())
 }
