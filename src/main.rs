@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate serde_derive;
 extern crate serde;
+#[macro_use]
 extern crate serde_json;
 extern crate reqwest;
 #[macro_use]
@@ -14,7 +15,7 @@ mod locc;
 use std::process;
 use clap::{Arg, App, SubCommand};
 use std::io::Write;
-use locc::{handle_dis, handle_rev, handle_rnd, handle_loc};
+use locc::{handle_dis, handle_p2g, handle_rev, handle_rnd, handle_loc};
 
 fn is_float(x: String) -> Result<(), String> {
     match x.parse::<f64>() {
@@ -86,6 +87,20 @@ fn get_cli_app<'a, 'b>() -> App<'a, 'b> {
                         .about("Return the distance between two points in meters")
                         .arg(get_loc_arg("location1", "1"))
                         .arg(get_loc_arg("location2", "2")))
+        .subcommand(SubCommand::with_name("p2g")
+                        .about("Convert polyline to geojson")
+                        .arg(Arg::with_name("polyline")
+                                 .required(true)
+                                 .short("P")
+                                 .long("polyline")
+                                 .value_name("polyline string")
+                                 .number_of_values(1)
+                                 .takes_value(true))
+                        .arg(Arg::with_name("collection")
+                                 .help("Wrap in feature collection")
+                                 .required(false)
+                                 .short("c")
+                                 .long("collection")))
 }
 
 fn bail_out(message: String) {
@@ -102,6 +117,7 @@ fn main() {
         ("rnd", Some(sub_m)) => handle_rnd(sub_m),
         ("rev", Some(sub_m)) => handle_rev(sub_m),
         ("dis", Some(sub_m)) => handle_dis(sub_m),
+        ("p2g", Some(sub_m)) => handle_p2g(sub_m),
         _ => Err(From::from(matches.usage())),
     };
 
