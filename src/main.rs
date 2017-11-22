@@ -45,6 +45,7 @@ fn get_loc_arg<'a, 'b>(name: &'a str, short: &str) -> Arg<'a, 'b> {
         .validator(is_float)
         .number_of_values(2)
         .takes_value(true)
+        .allow_hyphen_values(true)
 }
 
 fn get_place_arg<'a, 'b>(name: &'a str, short: &str) -> Arg<'a, 'b> {
